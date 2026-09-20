@@ -24,6 +24,7 @@ class SSDPResponse:
     usn: str
     st: str
     cache: str = "0"
+    endpoint: str = ""  # exact URL that answered (api/v2 or legacy XML), when known
 
     def __repr__(self) -> str:
         return f"<SSDPResponse({self.location}, {self.st}, {self.usn})>"
@@ -234,7 +235,8 @@ def probe_ip(ip: str, timeout: float = 3.0) -> "SSDPResponse | None":
             try:
                 _tvinfo.identify_api_v2(ip, timeout=min(2.0, timeout))
                 return SSDPResponse(location=f"http://{ip}:8001/api/v2/",
-                                    usn="", st="urn:samsung.com:device:RemoteControlReceiver:1", cache="0")
+                                    usn="", st="urn:samsung.com:device:RemoteControlReceiver:1",
+                                    cache="0", endpoint=f"http://{ip}:8001/api/v2/")
             except Exception as e:
                 logger.debug(f"probe {ip}: api/v2 attempt failed ({e})")
                 last = e
@@ -244,9 +246,10 @@ def probe_ip(ip: str, timeout: float = 3.0) -> "SSDPResponse | None":
                    for p in (8001, 8002, 55000, 9197)):
             return None
         try:
-            _tvinfo.get_by_ip(ip, timeout=max(4.0, timeout))
-            return SSDPResponse(location=f"http://{ip}:8001/ssdp/device-desc.xml",
-                                usn="", st="urn:samsung.com:device:RemoteControlReceiver:1", cache="0")
+            _info, endp = _tvinfo.get_by_ip_full(ip, timeout=max(4.0, timeout))
+            return SSDPResponse(location=endp or f"http://{ip}:8001/ssdp/device-desc.xml",
+                                usn="", st="urn:samsung.com:device:RemoteControlReceiver:1",
+                                cache="0", endpoint=endp)
         except Exception as e:
             logger.debug(f"probe {ip}: ports open but not Samsung ({e})")
             return None
@@ -317,7 +320,8 @@ def scan_subnet(cidr: str, timeout: float = 1.5, workers: int = 128) -> List[SSD
         key = _dedupe_key(loc)
         if key not in found:
             found[key] = SSDPResponse(location=loc, usn="",
-                                      st="urn:samsung.com:device:RemoteControlReceiver:1", cache="0")
+                                      st="urn:samsung.com:device:RemoteControlReceiver:1",
+                                      cache="0", endpoint=loc)
             logger.info(f"Samsung TV at {loc}")
     # Legacy second pass only for hosts with Samsung ports open but no api/v2
     if found:

@@ -23,12 +23,13 @@ class SSDPResponse:
         def makefile(self, *args, **kw):
             return self
 
-    def __init__(self, response: bytes):
+    def __init__(self, response: bytes, endpoint: str = ""):
         """
         Initialize SSDP response from raw response data.
         
         Args:
             response: Raw SSDP response bytes
+            endpoint: Exact endpoint URL that answered (when known)
         """
         r = http.client.HTTPResponse(self._FakeSocket(response))
         r.begin()
@@ -39,6 +40,7 @@ class SSDPResponse:
         
         cache_control = r.getheader("cache-control")
         self.cache = cache_control.split("=")[1] if cache_control else "0"
+        self.endpoint = endpoint
 
     def __repr__(self) -> str:
         return f"<SSDPResponse({self.location}, {self.st}, {self.usn})>"

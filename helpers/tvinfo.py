@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 import urllib.request
 import urllib.error
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 
 def getMethod(model: str) -> str:
@@ -69,13 +69,12 @@ def identify_api_v2(ip: str, timeout: float = 2.0) -> Dict[str, str]:
     return {'fn': str(name), 'ip': ip, 'model': str(model)}
 
 
-def get_by_ip(ip: str, timeout: float = 4) -> Dict[str, str]:
-    """Probe a known IP directly without SSDP multicast.
+def get_by_ip_full(ip: str, timeout: float = 4) -> Tuple[Dict[str, str], str]:
+    """Probe a known IP directly, returning (info, endpoint_url).
 
-    Tries (in order):
-      1. http://IP:8001/api/v2/ (JSON, newer Tizen)
-      2. http://IP:8001/ssdp/device-desc.xml (XML)
-      3. http://IP:8001/dm.xml / msf endpoints (XML, older models)
+    Same probing order as get_by_ip, but also reports the exact URL that
+    actually answered (api/v2 JSON or one of the legacy XML endpoints),
+    so callers can tell which endpoint really matched.
 
     Raises the last error if nothing answers like a Samsung TV.
     """
@@ -90,7 +89,8 @@ def get_by_ip(ip: str, timeout: float = 4) -> Dict[str, str]:
     # (first request often times out, second answers).
     for attempt in range(3):
         try:
-            return identify_api_v2(ip, timeout=timeout)
+            info = identify_api_v2(ip, timeout=timeout)
+            return info, f"http://{ip}:8001/api/v2/"
         except Exception as e:
             last_err = e
             logger.debug(f"api/v2 attempt {attempt + 1} failed for {ip}: {e}")
@@ -99,13 +99,27 @@ def get_by_ip(ip: str, timeout: float = 4) -> Dict[str, str]:
     for path in ("/ssdp/device-desc.xml", "/dm.xml", "/msf/1.0/", "/ssdp/dd.xml"):
         url = f"http://{ip}:8001{path}"
         try:
-            return get(url, timeout=timeout)
+            return get(url, timeout=timeout), url
         except Exception as e:
             last_err = e
             logger.debug(f"{path} failed for {ip}: {e}")
             continue
 
     raise last_err
+
+
+def get_by_ip(ip: str, timeout: float = 4) -> Dict[str, str]:
+    """Probe a known IP directly without SSDP multicast.
+
+    Tries (in order):
+      1. http://IP:8001/api/v2/ (JSON, newer Tizen)
+      2. http://IP:8001/ssdp/device-desc.xml (XML)
+      3. http://IP:8001/dm.xml / msf endpoints (XML, older models)
+
+    Raises the last error if nothing answers like a Samsung TV.
+    """
+    info, _endpoint = get_by_ip_full(ip, timeout=timeout)
+    return info
 
 
 def is_port_open(ip: str, port: int, timeout: float = 1.0) -> bool:

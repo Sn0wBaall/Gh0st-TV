@@ -214,7 +214,7 @@ def _key_category(key: str) -> str:
         return "System"
     return "Other"
 
-def _show_tv(location: str, via: str = ""):
+def _show_tv(location: str, via: str = "", endpoint: str = ""):
     import re as _re
     try:
         # Fast path first: api/v2 JSON (standby Tizen hangs on device-desc.xml).
@@ -222,16 +222,27 @@ def _show_tv(location: str, via: str = ""):
         m = _re.search(r'[0-9]+(?:\.[0-9]+){3}', location or '')
         if m:
             try:
-                info = tvinfo.get_by_ip(m.group(0))
+                if endpoint:
+                    # Discovery already recorded the exact endpoint (TCP/Direct).
+                    info = tvinfo.get_by_ip(m.group(0))
+                else:
+                    # SSDP: report the endpoint that actually answered the info call.
+                    info, endpoint = tvinfo.get_by_ip_full(m.group(0))
             except Exception:
                 info = None
         if info is None:
             info = tvinfo.get(location)
+            if not endpoint and location:
+                endpoint = location
         method = tvinfo.getMethod(info.get('model', ''))
         name = info.get('fn', 'Unknown')
         model = info.get('model', '?')
         ip = info.get('ip', '?')
         suffix = (' ' + colored('via ' + via, 'white', attrs=['dark'])) if via else ''
+        if endpoint:
+            suffix += ' ' + colored('·', 'white') + ' ' \
+                + colored('endpoint', 'white', attrs=['dark']) + ' ' \
+                + colored(str(endpoint), 'yellow')
         log.success(
             colored(name, 'magenta') + ' '
             + colored('(' + str(model) + ')', 'white') + ' - '
@@ -292,7 +303,8 @@ def scan(check_ips=None, cidr=None, timeout=5, verbose=False, no_fallback=False,
                 log.failure(colored('None of the given IPs respond as Samsung. Check they are powered on and on the same network.', 'red'))
             else:
                 for key, tv in found.items():
-                    _show_tv(getattr(tv, 'location', '') or '', via='Direct')
+                    _show_tv(getattr(tv, 'location', '') or '', via='Direct',
+                             endpoint=getattr(tv, 'endpoint', '') or '')
             return
         if not found:
             log.failure(colored('None of the given IPs respond as Samsung, continuing with the network scan...', 'red'))
@@ -325,7 +337,8 @@ def scan(check_ips=None, cidr=None, timeout=5, verbose=False, no_fallback=False,
     log.success(colored('Found ' + str(total) + ' Samsung TV(s)', 'green', attrs=['bold']) + '  ' + summary)
     for key, tv in found.items():
         via = '+'.join(sorted(methods.get(key, [])))
-        _show_tv(getattr(tv, 'location', '') or '', via=via)
+        _show_tv(getattr(tv, 'location', '') or '', via=via,
+                 endpoint=getattr(tv, 'endpoint', '') or '')
 
 def main():
 
